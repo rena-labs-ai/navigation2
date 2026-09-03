@@ -274,15 +274,22 @@ geometry_msgs::msg::PoseStamped RotationShimController::getSampledPathGoal()
 
   auto goal = current_path_.poses.back();
   goal.header.frame_id = current_path_.header.frame_id;
-  goal.header.stamp = clock_->now();
+  // RENA patch: Time(0) = latest TF; a now() stamp always extrapolates (see
+  // transformPoseToBaseFrame)
+  goal.header.stamp = rclcpp::Time(0);
   return goal;
 }
 
 geometry_msgs::msg::Pose
 RotationShimController::transformPoseToBaseFrame(const geometry_msgs::msg::PoseStamped & pt)
 {
+  // RENA patch: use the latest available transform. Upstream stamps the pose
+  // clock_->now(), but our VO stamps odom->base at sensor time, so a lookup at
+  // "now" always extrapolates into the future and the shim never engages.
+  geometry_msgs::msg::PoseStamped pt_latest = pt;
+  pt_latest.header.stamp = rclcpp::Time(0);
   geometry_msgs::msg::PoseStamped pt_base;
-  if (!nav2_util::transformPoseInTargetFrame(pt, pt_base, *tf_, costmap_ros_->getBaseFrameID())) {
+  if (!nav2_util::transformPoseInTargetFrame(pt_latest, pt_base, *tf_, costmap_ros_->getBaseFrameID())) {
     throw nav2_core::PlannerException("Failed to transform pose to base frame!");
   }
   return pt_base.pose;
